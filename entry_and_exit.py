@@ -2,6 +2,7 @@ from ultralytics import YOLO
 import cv2, numpy as np, easyocr, threading, time
 import RPi.GPIO as GPIO
 
+
 # ==== 전역 상태 ====
 detect = False
 running = True
