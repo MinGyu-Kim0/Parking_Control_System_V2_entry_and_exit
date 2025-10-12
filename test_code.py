@@ -63,9 +63,9 @@ CLOSE_ANGLE = 0
 
 # ==== 서보 스레드 (기존 코드와 동일) ====
 def servo():
-    pwm_force_release()
-    pwm_init()
     global detect, running
+    print("servo thread start")
+    pwm_force_release()
     pwm_init()
     last_angle = None
     try:
