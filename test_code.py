@@ -1,8 +1,46 @@
 # ==== 라이브러리 임포트 ====
 from ultralytics import YOLO
 import cv2, numpy as np, easyocr, threading, time
-# import Jetson.GPIO as GPIO
+# import Jetson.GPIO as GPIO X
 import socketio # Flask-SocketIO가 아닌, 클라이언트용 socketio 라이브러리
+
+# ==== JetPack 6 PWM 서보 제어 (Jetson.GPIO 대체) ====
+PWM_CHIP = "/sys/class/pwm/pwmchip3"
+PWM_CH = "0"
+
+def pwm_force_release():
+    try:
+        with open(f"{PWM_CHIP}/unexport", "w") as f:
+            f.write(PWM_CH)
+        time.sleep(0.1)
+    except:
+        pass
+def pwm_write(path, value):
+    try:
+        with open(path, "w") as f:
+            f.write(str(value))
+    except Exception as e:
+        print(f"[PWM ERROR] {e}")
+
+def pwm_init():
+    try:
+        pwm_write(f"{PWM_CHIP}/export", PWM_CH)
+    except:
+        pass  # 이미 export 된 경우 무시
+    time.sleep(0.1)
+    pwm_write(f"{PWM_CHIP}/pwm{PWM_CH}/enable", "0")
+    pwm_write(f"{PWM_CHIP}/pwm{PWM_CH}/period", "20000000")  # 20ms(50Hz)
+    pwm_write(f"{PWM_CHIP}/pwm{PWM_CH}/duty_cycle", "0")
+    pwm_write(f"{PWM_CHIP}/pwm{PWM_CH}/enable", "1")
+
+def set_servo_angle(angle):
+    # 0~180도 → 1ms~2ms 맵핑
+    duty_ns = 1000000 + (angle / 180) * 1000000
+    pwm_write(f"{PWM_CHIP}/pwm{PWM_CH}/duty_cycle", int(duty_ns))
+    time.sleep(0.15)
+
+def pwm_cleanup():
+    pwm_write(f"{PWM_CHIP}/pwm{PWM_CH}/enable", "0")
 
 # ==== Socket.IO 클라이언트 설정 ====
 sio = socketio.Client()
@@ -24,29 +62,21 @@ OPEN_ANGLE = 90
 CLOSE_ANGLE = 0
 
 # ==== 서보 스레드 (기존 코드와 동일) ====
-# def servo():
-#     global detect, running
-#     GPIO.setmode(GPIO.BOARD)
-#     SERVO_PIN = 32
-#     GPIO.setup(SERVO_PIN, GPIO.OUT)
-#     pwm = GPIO.PWM(SERVO_PIN, 50)
-#     pwm.start(0)
-#     last_target = None
-#     try:
-#         while running:
-#             target_angle = OPEN_ANGLE if detect else CLOSE_ANGLE
-#             if target_angle != last_target:
-#                 duty = angle_to_duty(target_angle)
-#                 pwm.ChangeDutyCycle(duty)
-#                 time.sleep(0.18)
-#                 pwm.ChangeDutyCycle(0)
-#                 last_target = target_angle
-#             time.sleep(0.02)
-#     finally:
-#         pwm.stop()
-#         GPIO.cleanup()
-#         print("Servo cleanup complete.")
-
+def servo():
+    pwm_force_release()
+    pwm_init()
+    global detect, running
+    pwm_init()
+    last_angle = None
+    try:
+        while running:
+            angle = OPEN_ANGLE if detect else CLOSE_ANGLE
+            if angle != last_angle:
+                set_servo_angle(angle)
+                last_angle = angle
+            time.sleep(0.05)
+    finally:
+        pwm_cleanup()
 # ==== 모델/캠 (기존 코드와 동일) ====
 model = YOLO("best.pt")
 capture = cv2.VideoCapture(0)
@@ -170,12 +200,12 @@ if __name__ == '__main__':
     try:
         # 1. 데이터를 받을 서버의 주소를 입력합니다.
         # !!!! 반드시 실제 서버의 IP 주소와 포트로 변경해주세요 !!!!
-        server_address = 'http://127.0.0.1:5002' 
-        sio.connect(server_address)
-
+        server_address = 'http://localhost:5002' 
+        sio.connect(server_address, transports=['websocket'])
+       
         # 2. 서보 제어 스레드를 데몬 스레드로 시작합니다.
-        # servo_thread = threading.Thread(target=servo, daemon=True)
-        # servo_thread.start()
+        servo_thread = threading.Thread(target=servo, daemon=True)
+        servo_thread.start()
 
         # 3. 메인 스레드에서 YOLO/OCR 로직을 실행합니다.
         main_logic()
