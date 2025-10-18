@@ -33,7 +33,7 @@ CRNN_MODEL_PATH = "./checkpoints/crnn_best.pth"
 
 # --- 관심 영역(ROI) 및 중심점 ---
 R_X1, R_Y1, R_X2, R_Y2 = 200, 200, 600, 400
-C_X, C_Y = (R_X1 + R_X2) // 2, (R_Y1 + R_Y2) // 2
+C_X1, C_Y1, C_X2, C_Y2 = 250, 200, 500, 400
 
 # --- 서보 제어 (Jetson SYSFS PWM) ---
 OPEN_ANGLE = 90
@@ -87,7 +87,7 @@ def predict_ocr(img_pil: Image.Image):
 
 def stabilize_text(new_text: str):
     """
-    OCR 결과를 안정화합니다. (CAM_TEST.py에서 가져온 핵심 기능)
+    OCR 결과를 안정화합니다.
     - 숫자 이외의 문자를 모두 제거합니다.
     - 4자리 숫자가 아니면 무효 처리합니다.
     - 최근 10개의 유효한 결과를 저장하고, 그 중 가장 빈번하게 나타난 값을 반환합니다.
@@ -212,7 +212,7 @@ def main_logic():
             X1, Y1, X2, Y2 = map(int, [xyxy[0] + x1_roi, xyxy[1] + y1_roi, xyxy[2] + x1_roi, xyxy[3] + y1_roi])
 
             # 중심점이 박스 안에 있는지 확인
-            if (X1 <= C_X <= X2) and (Y1 <= C_Y <= Y2):
+            if (X1 >= C_X1) and (Y1 >= C_Y1) and (X2 <= C_X2) and (Y2 <= C_Y2):
                 # --- OCR 실행 및 안정화 로직 ---
                 crop = frame[Y1:Y2, X1:X2]
 
@@ -255,7 +255,7 @@ def main_logic():
 
         # --- 시각화 ---
         cv2.rectangle(frame, (x1_roi, y1_roi), (x2_roi, y2_roi), (0, 255, 0), 2)
-        cv2.circle(frame, (C_X, C_Y), 5, (0, 0, 255), -1)
+        cv2.rectangle(frame, (C_X1, C_Y1), (C_X2, C_Y2), (0, 0, 255), 1)
 
         # 화면 표시
         try:
