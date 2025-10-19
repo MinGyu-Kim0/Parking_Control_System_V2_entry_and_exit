@@ -231,11 +231,12 @@ def main_logic():
 
                         if text != last_sent_number:
                             try:
-                                sio.emit('plate_number', text)
-                                img_filename = f"{text}.jpg"
-                                cv2.imwrite(img_filename, frame)
-                                with open(img_filename, 'rb') as f:
-                                    sio.emit("plate_image", {"number": text, "image": f.read()})
+                                sio.emit('plate_number', {'plate_number' : text})
+                                # 이미지 전송(사용 시 주석 해제)
+                                # img_filename = f"{text}.jpg"
+                                # cv2.imwrite(img_filename, frame)
+                                # with open(img_filename, 'rb') as f:
+                                #     sio.emit("plate_image", {"number": text, "image": f.read()})
                             except Exception as e:
                                 print(f"[Socket Emit 오류] {e}")
                             last_sent_number = text
