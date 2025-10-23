@@ -12,6 +12,7 @@ import socketio  # 클라이언트용
 import re
 from collections import deque, Counter
 import requests
+import base64 
 
 # ==== 딥러닝 라이브러리 ====
 import torch
@@ -231,20 +232,23 @@ def main_logic():
 
                         if text != last_sent_number:
                             try:
-                                response = requests.post(server_address, params={"car_number": text})
+                                response = requests.post(http_address, params={"car_number": text})
                                 center_detected = response.json()["parking_available"]
                                 # 이미지 전송(사용 시 주석 해제)
                                 # img_filename = f"{text}.jpg"
                                 # cv2.imwrite(img_filename, frame)
                                 # with open(img_filename, 'rb') as f:
-                                #     sio.emit("plate_image", {"number": text, "image": f.read()})
+                                #     img_bytes = f.read()
+                                #     img_b64 = base64.b64encode(img_bytes).decode('utf-8')
+                                #     print(img_b64)
+                                #     sio.emit("entry_photo", {"node": {"car_number": text, "entry_photo": img_b64}})
                             except Exception as e:
                                 print(f"[Socket Emit 오류] {e}")
                             last_sent_number = text
 
                         cv2.rectangle(frame, (X1, Y1), (X2, Y2), (255, 0, 0), 3)
                         cv2.putText(frame, text, (X1, Y1 - 10),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
         # ==== 'detect' 상태 유지 및 해제 로직 ====
         now = time.time()
@@ -275,9 +279,9 @@ def main_logic():
 # Socket.IO 이벤트 핸들러
 # =========================
 @sio.event
-def connect():
+def connection():
     print('✅ 서버에 성공적으로 연결되었습니다!')
-
+    sio.emit("register", {"id" : "pi7"})
 @sio.event
 def disconnect():
     print('🔌 서버와의 연결이 끊겼습니다.')
@@ -286,10 +290,15 @@ def disconnect():
 # 메인 실행 블록
 # =========================
 if __name__ == '__main__':
-    server_address = 'http://localhost:5005' # 서버 주소
-    response = requests.get(f"{server_address}/health")
+    http_address = 'http://localhost:5005' # 서버 주소
+    response = requests.get(f"{http_address}/health")
 
-    print(response.json()["message"])    
+    print(response.json()["message"])
+    
+    # 이미지 전송할 서버
+    # express_server = 'http://localhost:5003'
+    # sio.connect(express_server, transports=['websocket'])
+    
 
     # 서보 스레드 시작
     servo_thread = threading.Thread(target=servo_thread_func, daemon=True)
