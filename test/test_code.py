@@ -38,7 +38,7 @@ YOLO_MODEL_PATH = "./best.pt"
 CRNN_MODEL_PATH = "./checkpoints/crnn_best.pth"
 
 # --- 네트워크 ---
-HTTP_ADDRESS = 'http://localhost:5005' # 서버 주소 (전역으로 이동)
+HTTP_ADDRESS = 'http://192.168.0.48:5005' # 서버 주소 (전역으로 이동)
 SIO_SERVER = 'http://localhost:5003'  # 이미지 전송 서버 (전역으로 이동)
 
 # --- 관심 영역(ROI) 및 중심점 ---
@@ -184,32 +184,41 @@ def servo_thread_func():
         print("🔚 서보 제어 스레드 정리 완료")
 
 # =========================
-# 네트워크 스레드 함수 (★ 신규)
+# 네트워크 스레드 함수 (★ 견고하게 수정된 버전)
 # =========================
 def send_to_server(car_number, frame_to_send):
     """
     [별도 스레드] 서버로 데이터를 전송하고, 응답에 따라 'detect' 플래그를 설정합니다.
-    이 함수는 blocking되지만, 별도 스레드에서 실행되므로 메인 루프에 영향을 주지 않습니다.
+    (★ 서버가 JSON이 아닌 빈 값/HTML 오류를 보내도 절대 죽지 않도록 수정됨)
     """
     global detect, last_seen_time
     
+    server_response_ok = False # ★ 서버가 "주차 가능"이라고 응답했는지 여부
+
     try:
         print(f"🚀 [네트워크 스레드] 서버 전송 시도: {car_number}")
         
         # 1. HTTP 요청 (주차 가능 여부 확인)
-        response = requests.post(HTTP_ADDRESS, params={"car_number": car_number})
-        response_data = response.json()
-        parking_available = response_data.get("parking_available", False)
+        response = requests.post(HTTP_ADDRESS, params={"car_number": car_number}, timeout=5) # 5초 타임아웃
+        response.raise_for_status() # 4xx, 5xx 에러가 나면 예외 발생
+
+        # ★★★ 핵심 수정 ★★★
+        # 서버가 JSON이 아닌 (크래시로 인한) 빈 값이나 HTML을 보낼 경우
+        try:
+            response_data = response.json()
+            parking_available = response_data.get("parking_available", False)
+        except requests.exceptions.JSONDecodeError:
+            # "Expecting value..." 오류가 여기서 잡힘
+            print("❌ [네트워크 스레드] 오류: 서버가 JSON이 아닌 응답 (빈 값 또는 HTML)을 반환함.")
+            parking_available = False # 주차 불가로 간주
 
         if parking_available:
             print(f"✅ [네트워크 스레드] 서버 응답: {car_number} 주차 가능. 서보 개방.")
-            # 서버가 '가능'이라고 응답했을 때만 detect 플래그를 True로 설정
-            detect = True
-            last_seen_time = time.time() # 서보 유지 시간 갱신
+            server_response_ok = True
         else:
             print(f"❌ [네트워크 스레드] 서버 응답: {car_number} 주차 불가.")
             
-        # 2. Socket.IO로 이미지 전송 (필요시 주석 해제)
+        # 2. Socket.IO로 이미지 전송... (이전과 동일)
         # if sio.connected:
         #     print("📸 [네트워크 스레드] Socket.IO로 이미지 전송 시도...")
         #     _, buffer = cv2.imencode('.jpg', frame_to_send)
@@ -218,9 +227,21 @@ def send_to_server(car_number, frame_to_send):
         #     print("... 이미지 전송 완료.")
 
     except requests.exceptions.ConnectionError as e:
-        print(f"❌ [네트워크 스레드] HTTP 서버 연결 실패: {e}")
+        print(f"❌ [네트워크 스레드] HTTP 서버 연결 실패 (서버가 꺼져있음): {e}")
+    except requests.exceptions.Timeout as e:
+        print(f"❌ [네트워크 스레드] HTTP 서버 응답 시간 초과: {e}")
+    except requests.exceptions.HTTPError as e:
+        print(f"❌ [네트워크 스레드] HTTP 오류 (예: 500 Internal Server Error): {e}")
     except Exception as e:
-        print(f"❌ [네트워크 스레드] 오류 발생: {e}")
+        print(f"❌ [네트워크 스레드] 알 수 없는 오류 발생: {e}")
+
+    # 통신이 성공하고 + 서버가 "주차 가능"이라고 했을 때만
+    # detect 플래그와 시간을 갱신합니다.
+    if server_response_ok:
+        detect = True
+        last_seen_time = time.time()
+            
+
 
 # =========================
 # 모델 및 카메라 로딩
