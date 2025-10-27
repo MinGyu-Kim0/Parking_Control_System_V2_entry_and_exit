@@ -13,8 +13,8 @@ h = lgpio.gpiochip_open(CHIP)
 # PWM 설정 (50Hz = 서보모터 기본 PWM)
 PWM_FREQ = 50  # 50Hz (주기 20ms)
 
-OPEN_ANGLE = 138
-CLOSE_ANGLE = 48
+OPEN_ANGLE = 180
+CLOSE_ANGLE = 0
 
 def set_angle(angle):
     # angle(0~180) → pulse width (1~2ms)
@@ -34,11 +34,13 @@ def connect():
 def gate_open(data=None):
     print("🔓 게이트 열기 이벤트 수신!")
     set_angle(OPEN_ANGLE)
-
-@sio.on("gate_close")
-def gate_close(data=None):
-    print("🔒 게이트 닫기 이벤트 수신!")
+    time.sleep(5)
     set_angle(CLOSE_ANGLE)
+
+# @sio.on("gate_close")
+# def gate_close(data=None):
+#     print("🔒 게이트 닫기 이벤트 수신!")
+#     set_angle(CLOSE_ANGLE)
 
 @sio.event
 def disconnect():
